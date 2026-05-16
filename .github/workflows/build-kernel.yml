@@ -9,7 +9,7 @@ on:
       DEFCONFIG:
         description: 'Defconfig name'
         required: false
-        default: '/vendor/lineage-a52sxq_defconfig'
+        default: 'vendor/lineage-a52sxq_defconfig'
 
 jobs:
   build:
@@ -71,35 +71,34 @@ jobs:
           echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
           echo "CC=clang" >> $GITHUB_ENV
 
-      - name: Make defconfig
-        run: |
-          make O=out \
-            ARCH=$ARCH \
-            CC=clang \
-            CLANG_TRIPLE=$CLANG_TRIPLE \
-            CROSS_COMPILE=$CROSS_COMPILE \
-            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
-            $DEFCONFIG
+       - name: Make defconfig
+         run: |
+          make O=$(pwd)/out \
+          ARCH=$ARCH \
+          CC=clang \
+          CLANG_TRIPLE=$CLANG_TRIPLE \
+          CROSS_COMPILE=$CROSS_COMPILE \
+          CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
+          ${{ env.DEFCONFIG }}
 
       - name: Build kernel
         run: |
-          make -j$(nproc --all) O=out \
-            ARCH=$ARCH \
-            CC="ccache clang" \
-            CLANG_TRIPLE=$CLANG_TRIPLE \
-            CROSS_COMPILE=$CROSS_COMPILE \
-            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
-            2>&1 | tee out/build.log
+         make -j$(nproc --all) O=$(pwd)/out \
+         ARCH=$ARCH \
+         CC="ccache clang" \
+         CLANG_TRIPLE=$CLANG_TRIPLE \
+         CROSS_COMPILE=$CROSS_COMPILE \
+         CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-image
-          path: |
-            out/arch/arm64/boot/Image
-            out/arch/arm64/boot/Image.gz
-            out/arch/arm64/boot/Image.gz-dtb
-          if-no-files-found: warn
+        name: kernel-image
+        path: |
+         out/arch/arm64/boot/Image
+         out/arch/arm64/boot/Image.gz
+         out/arch/arm64/boot/Image.gz-dtb
+            if-no-files-found: warn
 
       - name: Upload DTBO
         uses: actions/upload-artifact@v4
