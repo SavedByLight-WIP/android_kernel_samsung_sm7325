@@ -1,0 +1,118 @@
+name: Build Kernel 5.4
+
+on:
+  push:
+    branches:
+      - lineage-23.2
+  pull_request:
+    branches:
+      - lineage-23.2
+  workflow_dispatch:
+    inputs:
+      DEFCONFIG:
+        description: Defconfig name
+        required: false
+        default: vendor/lineage-a52sxq_defconfig
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      ARCH: arm64
+      SUBARCH: arm64
+
+    steps:
+      - name: Set DEFCONFIG
+        run: |
+          INPUT="${{ github.event.inputs.DEFCONFIG }}"
+          echo "DEFCONFIG=${INPUT:-vendor/lineage-a52sxq_defconfig}" >> $GITHUB_ENV
+
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex \
+            g++-multilib gcc-multilib git gnupg gperf \
+            imagemagick lib32ncurses-dev lib32readline-dev \
+            lib32z1-dev liblz4-tool libncurses-dev \
+            libssl-dev libxml2 libxml2-utils lzop pngcrush rsync \
+            schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            python3 python-is-python3
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          max-size: 2G
+          key: kernel-5.4-${{ env.DEFCONFIG }}
+
+      - name: Download Clang toolchain
+        run: |
+          mkdir -p $HOME/toolchains
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang \
+            $HOME/toolchains/clang
+
+      - name: Download GCC cross-compiler (arm64 + arm32)
+        run: |
+          git clone --depth=1 \
+            https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 \
+            $HOME/toolchains/gcc64
+          git clone --depth=1 \
+            https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 \
+            $HOME/toolchains/gcc32
+
+      - name: Set toolchain paths
+        run: |
+          echo "PATH=$HOME/toolchains/clang/bin:$HOME/toolchains/gcc64/bin:$HOME/toolchains/gcc32/bin:$PATH" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=aarch64-linux-android-" >> $GITHUB_ENV
+          echo "CROSS_COMPILE_ARM32=arm-linux-androideabi-" >> $GITHUB_ENV
+          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "CC=clang" >> $GITHUB_ENV
+
+      - name: Make defconfig
+        run: |
+          make O=$(pwd)/out \
+            ARCH=$ARCH \
+            CC=clang \
+            CLANG_TRIPLE=$CLANG_TRIPLE \
+            CROSS_COMPILE=$CROSS_COMPILE \
+            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
+            $DEFCONFIG
+
+      - name: Build kernel
+        run: |
+          make -j$(nproc --all) O=$(pwd)/out \
+            ARCH=$ARCH \
+            CC="ccache clang" \
+            CLANG_TRIPLE=$CLANG_TRIPLE \
+            CROSS_COMPILE=$CROSS_COMPILE \
+            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
+            2>&1 | tee $(pwd)/out/build.log
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-image
+          path: |
+            out/arch/arm64/boot/Image
+            out/arch/arm64/boot/Image.gz
+            out/arch/arm64/boot/Image.gz-dtb
+          if-no-files-found: warn
+
+      - name: Upload DTBO
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtbo
+          path: out/arch/arm64/boot/dtbo.img
+          if-no-files-found: warn
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: out/build.log
