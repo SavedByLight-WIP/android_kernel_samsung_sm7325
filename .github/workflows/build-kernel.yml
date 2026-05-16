@@ -9,7 +9,7 @@ on:
       DEFCONFIG:
         description: 'Defconfig name'
         required: false
-        default: 'vendor/your_defconfig'
+        default: '/vendor/lineage-a52sxq_defconfig'
 
 jobs:
   build:
